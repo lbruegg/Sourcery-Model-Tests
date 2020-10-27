@@ -1,0 +1,548 @@
+<%
+
+
+// ruft initialisierung von liste von variablen
+
+var testString = "testString"
+function createModel(variables) {
+	
+	var result = []
+
+    for (let i = 0; i < variables.length; i++) {
+        
+        var variable = variables[i]
+        if (!variable.defaultValue && variable.isComputed == 0) {
+            
+            var item = variable.name + ": "
+            item += createSingle(variable.typeName.name)
+
+		    if (i < variables.length-1) {
+		    	item += ", "
+		    }
+
+		    result.push(item)
+        }
+    }
+	return result
+}
+
+
+// ruft initialisierung von liste von parameter
+
+function createModelInit(variables) {
+	
+	var result = []
+
+	for (let i = 0; i < variables.length; i++) {
+		
+		var variable = variables[i]
+		var item = variable.name + ": "
+
+		item += createSingle(variable.typeName.name)
+
+		if (i < variables.length-1) {
+			item += ", "
+		}
+
+		result.push(item)
+	}
+	return result
+}
+
+
+// initialisiert test erstellung
+
+function createTest(type) {
+
+	var result = []
+	var counter = 0
+
+    type.variables.forEach(variable => {
+        if (variable.readAccess != "private" && variable.readAccess != "fileprivate" && !variable.defaultValue && variable.isComputed == 0) {
+            
+            createSingleTest(variable).forEach(element => {
+                result.push(element)
+            });
+        }
+
+        if (variable.readAccess != "private" && variable.readAccess != "fileprivate" && variable.defaultValue || variable.isComputed == 1) {
+            
+            if (variable.defaultValue) {
+
+				if (variable.defaultValue.includes("\"")) {
+
+					if (variable.isStatic) {
+						result.push("XCTAssertEqual(" + type.name + "." + variable.name + ", default" + counter + ")")
+						counter += 1
+					} else {
+						if (variable.typeName.name.includes("?")) {
+							result.push("XCTAssertEqual(model." + variable.name + "?, default" + counter + ")")
+							counter += 1
+						} else {
+							result.push("XCTAssertEqual(model." + variable.name + ", default" + counter + ")")
+							counter += 1
+						}
+					}
+				} else {
+
+					if (variable.isStatic) {
+						result.push("XCTAssertEqual(" + type.name + "." + variable.name + ", " + variable.defaultValue + ")")
+						counter += 1
+					} else {
+						if (variable.typeName.name.includes("?")) {
+							result.push("XCTAssertEqual(model." + variable.name + "?, " + variable.defaultValue + ")")
+							counter += 1
+						} else {
+							result.push("XCTAssertEqual(model." + variable.name + ", " + variable.defaultValue + ")")
+							counter += 1
+						}
+					}
+				}
+            } else if (variable.isComputed == 1) {
+                result.push("XCTAssertNotNil(model." + variable.name + ")")
+            }
+        }
+    });
+	
+    result.push("XCTAssertNotNil(model)")
+
+	return result
+}
+
+
+// erstellt Tupleteile
+
+function createtupleTest(tuple) {
+	
+	var result = []
+
+    var items = tuple.split(",")
+    for (let idx = 0; idx < items.length; idx++) {
+        
+        if (items.length != 1) {
+
+            if (items[idx].includes("String") || items[idx].includes("Character")) {
+				result.push("." + idx + ", " + testString + ")")
+			} else if (items[idx].includes("Int") || items[idx].includes("Float") || items[idx].includes("Double")) {
+				result.push("." + idx + ", 0)")
+			} else if (items[idx].includes("Bool")) {
+				result.push("." + idx + ", true)")
+			} else {
+				result.push("." + idx + ", " + initCostumType(items[idx]) + ")")
+			}
+        } else {
+
+            if (items[idx].includes("String") || items[idx].includes("Character")) {
+				result.push(", " + testString + ")")
+			} else if (items[idx].includes("Int") || items[idx].includes("Float") || items[idx].includes("Double")) {
+				result.push(", 0)")
+			} else if (items[idx].includes("Bool")) {
+				result.push(", true)")
+			} else {
+				result.push(", " + initCostumType(items[idx]) + ")")
+			}
+        }
+    }
+	return result
+}
+
+
+// erstellt Test für: tuple, struct, enum, array, set, dictonary, Standardtypen
+
+function createSingleTest(variable) {
+	
+	var result = []
+
+		if (variable.typeName.name.includes("(")) {
+		
+            createtupleTest(variable.typeName.name).forEach(item => {
+				if (variable.typeName.name.includes("?")) {
+					result.push("XCTAssertEqual(model." + variable.name + "?" + item)
+				} else {
+					result.push("XCTAssertEqual(model." + variable.name + item)
+				}
+            });
+
+		} else if (!variable.typeName.name.includes("<") && variable.typeName.name.includes("String") || variable.typeName.name.includes("Character") || variable.typeName.name.includes("Int") || variable.typeName.name.includes("Float") || variable.typeName.name.includes("Double") || variable.typeName.name.includes("Bool") || variable.typeName.name.includes("[") || variable.typeName.name.includes(":") || variable.typeName.name.includes("Set")) {
+			
+			if (checkforEnumStruct(variable)) {
+				for (const item of createCostumTypeTest(variable)) {
+					if (variable.typeName.name.includes("?")) {
+						result.push("XCTAssertEqual(model." + variable.name + "?[0]" + item)	
+
+					} else {
+						result.push("XCTAssertEqual(model." + variable.name + "[0]" + item)	
+					}
+				}
+			} else {
+
+				result.push("XCTAssertEqual(model." + variable.name + ", " + createSingle(variable.typeName.name) + ")")
+			}
+		} else {
+
+            createCostumTypeTest(variable).forEach(item => {
+				if (variable.typeName.name.includes("?")) {
+					result.push("XCTAssertEqual(model." + variable.name + "?" + item)
+				} else {
+					result.push("XCTAssertEqual(model." + variable.name + item )
+				}
+            });
+		} 
+	return result
+}
+
+
+// test der Variable Enum, Struct ist
+
+function checkforEnumStruct(variable) {
+
+	for (const type of types.structs) {	
+		
+		if (variable.typeName.name.replace(/\]|\[|\?/g, "") == type.name) {
+			return true
+		}
+	}
+	for (const enutype of types.enums) {
+		if (variable.typeName.name.replace(/\]|\[|\?/g, "") == enutype.name) {
+			return true
+		}
+	}
+	return false
+}
+
+
+// erstellt Testwerte für: struct, enum, generic, computed und vordefinierte Werte, Mehfachvererbung
+
+function createCostumTypeTest(costumVar) {
+	
+	var result = []
+
+    for (const type of types.structs) {
+        
+        if (costumVar.typeName.name.replace(/\]|\[|\?/g, "").replace(/<.*>/g, "") == type.name.replace(/<.*>/g, "")) {
+            
+            for (const item of type.variables) {
+                
+                if (item.typeName.name.includes("(")) {
+                    
+                    for (test of createtupleTest(item.typeName.name)) {
+						result.push("." + item.name + test)
+					}
+                } else {
+					if (checkforEnumStruct(item)) {
+						for (const test of createCostumTypeTest(item)) {
+							if (item.typeName.name.includes("[")) {
+								if (item.typeName.name.includes("?")) {
+									result.push("." + item.name + "?[0]" + test)	
+
+								} else {
+									result.push("." + item.name + "[0]" + test)	
+								}
+							} else {
+								if (item.typeName.name.includes("?")) {
+									result.push("." + item.name + "?" + test)	
+
+								} else {
+									result.push("." + item.name + test)	
+								}
+							}
+						}
+					} else {
+						result.push("."+ item.name+", " + createSingle(item.typeName.name) + ")")
+					}
+                }
+            }
+            return result
+        }
+    }
+	
+    for (let n = 0; n < types.enums.length; n++) {
+
+        if (costumVar.typeName.name.includes(types.enums[n].name)) {
+			
+            return [", ." + types.enums[n].cases[0].name + ")"]
+		} else if (n == types.enums.length-1) {
+
+			return [", " + testString + ")"]
+		}
+    }
+	return result
+}
+
+
+// initialisiert: enum, generic, ruft init für struct 
+
+function initCostumType(costumVar) {
+
+    for (type of types.structs) {	
+
+		if (costumVar.replace(/\]|\[|\?/g, "").replace(/<.*>/g, "") == type.name.replace(/<.*>/g, "")) {
+			return initStruct(type)
+		}
+	}
+
+    for (let n = 0; n < types.enums.length; n++) {
+
+        if (costumVar.includes(types.enums[n].name)) {
+			return "." + types.enums[n].cases[0].name
+
+		} else if (n == types.enums.length-1) {
+			return "testString"
+		}  
+    }
+	return "....."
+}
+
+
+// erstellt structsinitialisierung
+
+function initStruct(type) {
+	
+	var item = type.name.replace("?", "").replace("[", "").replace("]", "") + "("
+    
+    for (let idx = 0; idx < type.variables.length; idx++) {
+
+        var variable = type.variables[idx]
+    
+        item += variable.name + ": " + createSingle(variable.typeName.name)
+
+		if (idx == type.variables.length-1) {
+			item += ")"
+		}
+		if (idx < type.variables.length-1 && type.variables.length != 0) {
+			item += ", "
+		}
+    }
+	return item
+}
+
+// initialisiert: einzelne variablen(String, Int, bool, array), ruft init für struct typ und tuple typ auf 
+
+function createSingle(variable) {
+	
+	if (variable.includes("[") && !variable.includes(":") || variable.includes("Set")) {
+
+		if (variable.includes("String") || variable.includes("Character")) {
+			return "[" + testString + "]"
+		} else if (variable.includes("Int") || variable.includes("Float") || variable.includes("Double")) {
+			return "[0]"
+		} else if (variable.includes("Bool")) {
+			return "[true]"
+		} else {
+			return "[" + initCostumType(variable) + "]"
+		}
+	} else if (variable.includes(":")) {
+
+		var item = ""
+
+		if (variable.startsWith("[String") || variable.startsWith("[Character")) {
+			item += "[" + testString + ": "
+		} else if (variable.startsWith("[Int") || variable.startsWith("[Float") || variable.startsWith("[Double")) {
+			item += "[0: "
+		} else if (variable.startsWith("[Bool")) {
+			item += "[true: "
+		} else {
+			item += "[" + initCostumType(variable) + ": "
+		}
+		if (variable.endsWith("String]") || variable.endsWith("Character]")) {
+			item += "" + testString + "]"
+		} else if (variable.endsWith("Int]") || variable.endsWith("Float]") || variable.endsWith("Double]")) { 
+			item += "0]"
+	 	} else if (variable.endsWith("Bool]")) { 
+			item += "true]"
+		} else {
+			item += initCostumType(variable) + "]"
+		}
+		return item
+
+	} else if (variable.includes("(")) {
+
+		return inittuple(variable)
+	} else if (!variable.includes("<")) {
+
+		if (variable.includes("String") || variable.includes("Character")) {
+			return "" + testString + ""
+		} else if (variable.includes("Int") || variable.includes("Float") || variable.includes("Double")) {
+			return "0"
+	 	} else if (variable.includes("Bool")) {
+			return "true"
+	 	} else {
+			return initCostumType(variable)
+		}
+	} else {
+		return initCostumType(variable)	
+	}
+}
+
+
+// initialisiert: tuple
+
+function inittuple(vartype) {
+
+	var tuple = "("
+
+    var items = vartype.split(",")
+
+    for (let idx = 0; idx < items.length; idx++) {
+
+        if (items[idx].includes("String") || items[idx].includes("Character")) {
+			tuple += "" + testString + ""
+		} else if (items[idx].includes("Int") || items[idx].includes("Float") || items[idx].includes("Double")) {
+			tuple += "0"
+		} else if (items[idx].includes("Bool")) {
+			tuple += "true"
+		} else {
+			tuple += initCostumType(items[idx])
+		}
+			
+		if (idx != items.length-1) {
+			tuple += ", "
+		}
+    }	
+	tuple += ")"
+	return tuple
+}
+%>
+
+
+import XCTest
+@testable import af_testaufgabe
+
+class GeneratedTestsJavaScript: XCTestCase {
+
+	let testString = "testString"
+
+	// MARK: - Life cycle
+	
+	override func setUp() {
+		super.setUp()
+	}
+
+	override func tearDown() {
+		super.tearDown()
+	}
+
+
+	// MARK: - Test cases
+	
+	//structs
+<%_ types.structs.forEach(type => { -%>
+    <%_ if (type.accessLevel != "private" && type.accessLevel != "fileprivate" && type.annotations.createTest) { -%>
+	
+	<%_ if (type.initializers.length == 0) { -%>     
+    func test<%= type.name %>() {
+		<%_ var defaultcounter = 0 -%>
+		<%_ type.variables.forEach(element => { -%>
+			<%_ if (element.defaultValue) { -%> 
+				<%_ if (element.defaultValue.includes("\"")) { -%>
+					<%_ var value = element.defaultValue.replace("\"","").replace("\"","") -%> 
+					let default<%= defaultcounter -%> = "<%= value -%>" 
+					<%_ defaultcounter += 1 -%>
+				<%_ } -%>
+			<%_ } -%>
+		<%_ }) -%> 
+		
+		let model = <%= type.name %>(
+				<%_ createModel(type.variables).forEach(varitem => { -%>
+                    <%= varitem %>
+				<%_ }) -%>  
+		)
+
+    <%_ createTest(type).forEach(varitem => { -%>
+		<%= varitem %>
+	<%_ }) -%>
+	}
+
+	<%_ } else { -%>
+		<%_ var counter = 0 -%>
+	<%_ type.initializers.forEach(element => { -%>
+	func test<%= type.name %><%= counter -%>() {
+		<%_ var defaultcounter = 0 -%>
+		<%_ type.variables.forEach(element => { -%>
+			<%_ if (element.defaultValue) { -%> 
+				<%_ if (element.defaultValue.includes("\"")) { -%>
+			<%_ var value = element.defaultValue.replace("\"","").replace("\"","") -%> 
+		let default<%= defaultcounter -%> = "<%= value -%>" 
+			<%_ defaultcounter += 1 -%>
+				<%_ } -%>
+			<%_ } -%>
+		<%_ }) -%> 
+
+
+		let model = <%= type.name %>(
+			<%_ createModelInit(element.parameters).forEach(varitem => { -%>
+			<%= varitem %>
+			<%_ counter += 1 -%>
+			<%_ }) -%>
+		)
+	<%_ }) -%>
+	
+	<%_ createTest(type).forEach(varitem => { -%>
+		<%= varitem %>
+	<%_ }) -%>
+	}
+	<%_ } -%>
+    <% } %>
+<% }) %>
+
+
+//classes
+<% types.classes.forEach(type => { -%>
+    <% if (type.accessLevel != "private" && type.accessLevel != "fileprivate" && type.annotations.createTest) { -%>
+	
+	<%_ if (type.initializers.length == 0) { -%>     
+    func test<%= type.name %>() {
+		<%_ var defaultcounter = 0 -%>
+		<%_ type.variables.forEach(element => { -%>
+			<%_ if (element.defaultValue) { -%> 
+				<%_ if (element.defaultValue.includes("\"")) { -%>
+			<%_ var value = element.defaultValue.replace("\"","").replace("\"","") -%> 
+		let default<%= defaultcounter -%> = "<%= value -%>" 
+			<%_ defaultcounter += 1 -%>
+				<%_ } -%>
+			<%_ } -%>
+		<%_ }) -%> 
+        
+		let model = <%= type.name %>(
+				<%_ createModel(type.variables).forEach(varitem => { -%>
+                    <%= varitem %>
+				<%_ }) -%>  
+		)
+
+    <%_ createTest(type).forEach(varitem => { -%>
+        <%= varitem %>
+    <%_ }) -%>
+	}
+
+	<%_ } else { -%>
+		<%_ var counter = 0 -%>
+	<%_ type.initializers.forEach(element => { -%>
+	func test<%= type.name %><%= counter -%>() {
+		<%_ var defaultcounter = 0 -%>
+		<%_ type.variables.forEach(element => { -%>
+			<%_ if (element.defaultValue) { -%> 
+				<%_ if (element.defaultValue.includes("\"")) { -%>
+			<%_ var value = element.defaultValue.replace("\"","").replace("\"","") -%> 
+		let default<%= defaultcounter -%> = "<%= value -%>" 
+			<%_ defaultcounter += 1 -%>
+				<%_ } -%>
+			<%_ } -%>
+		<%_ }) -%> 
+
+
+		let model = <%= type.name %>(
+			<%_ createModelInit(element.parameters).forEach(varitem => { -%>
+			<%= varitem %>
+			<%_ counter += 1 -%>
+			<%_ }) -%>
+		)
+	<%_ }) -%>
+	
+	<%_ createTest(type).forEach(varitem => { -%>
+		<%= varitem %>
+	<%_ }) -%>
+	}
+	<%_ } -%>
+    <% } %>
+<% }) %>
+}

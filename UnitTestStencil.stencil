@@ -1,0 +1,483 @@
+{# Start --------------------------------------------------------------------------------------------------------------------------------------------------------- #}
+
+{% macro createModel variables %}
+{% for variable in variables where variable.defaultValue == nil and not variable.isComputed %}
+	
+					{{variable.name}}: {% call createSingle variable %}
+
+					{{ ',' if not forloop.last }}
+{% endfor %}
+{% endmacro %}
+
+
+
+{% macro createModelInit variables %}
+{% for variable in variables %}
+	
+					{{variable.name}}: {% call createSingle variable %}
+
+					{{ ',' if not forloop.last }}
+{% endfor %}
+{% endmacro %}
+
+
+{# Modelnitialisierung --------------------------------------------------------------------------------------------------------------------------------------------------------- #}
+{# initialiseiert: Standardtpen, ruft init für struct, enum, tuple (Liste von Variablen) #}
+
+{% macro createofType variables %}
+{% for variable in variables %}
+	{% if variable.typeName.name|contains: "[" and not variable.typeName.name|contains: ":" or variable.typeName.name|contains: "Set" %}
+		{% if variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" %}
+					{{variable.name}}: ["testString"]
+		{% elif variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" %}
+					{{variable.name}}: [0]
+		{% elif variable.typeName.name|contains: "Bool" %}
+					{{variable.name}}: [true]
+		{% else %}
+					{{variable.name}}: [{% call initcostum variable.typeName.name %}]
+		{% endif %}
+					{{ ',' if not forloop.last }}
+	{% elif variable.typeName.name|contains: ":" %}
+		{% if variable.typeName.name|hasPrefix: "[String" or variable.typeName.name|hasPrefix: "[Character" %}
+					{{variable.name}}: ["testString":
+		{% elif variable.typeName.name|hasPrefix: "[Int" or variable.typeName.name|hasPrefix: "[Float" or variable.typeName.name|hasPrefix: "[Double" %}
+					{{variable.name}}: [0:
+		{% elif variable.typeName.name|hasPrefix: "[Bool" %}
+					{{variable.name}}: [true:
+		{% else %}
+					{{variable.name}}: [{% call initcostum variable.typeName.name %}
+		{% endif %}
+		{% if variable.typeName.name|hasSuffix: "String]" or variable.typeName.name|hasSuffix: "Character]" %}
+					 "testString"]
+		{% elif variable.typeName.name|hasSuffix: "Int]" or variable.typeName.name|hasSuffix: "Float]" or variable.typeName.name|hasSuffix: "Double]" %} 
+					0]
+		{% elif variable.typeName.name|hasSuffix: "Bool]" %} 
+					true]
+		{% else %}
+					{% call initcostum variable.typeName.name %}]
+		{% endif %}
+					{{ ',' if not forloop.last }}
+	{% elif variable.typeName.name|contains: "(" %}
+					{{variable.name}}: {% call inittuple variable.typeName.name %}{{ ',' if not forloop.last }}
+	{% else %}
+		{% if variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" %}
+					{{variable.name}}: "testString"
+		{% elif variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" %}
+					{{ variable.name }}: 0			
+		{% elif variable.typeName.name|contains: "Bool" %}
+					{{ variable.name }}: true
+		{% else %}
+					{{variable.name}}: {% call initcostum variable.typeName.name %}
+		{% endif %}
+					{{ ',' if not forloop.last }}
+	{% endif %}
+{% endfor %}
+{% endmacro %}
+
+
+{# initialiseiert: Standardtpen, ruft init für struct, enum, tuple (einzelne Variablen) #}
+
+{% macro createSingle variable %}
+{% if variable.typeName.name|contains: "[" and not variable.typeName.name|contains: ":" or variable.typeName.name|contains: "Set" %}
+	{% if variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" %}
+		["testString"]
+	{% elif variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" %}
+		[0]
+	{% elif variable.typeName.name|contains: "Bool" %}
+		[true]
+	{% else %}
+		[{% call initcostum variable.typeName.name %}]
+	{% endif %}
+{% elif variable.typeName.name|contains: ":" %}	
+	{% if variable.typeName.name|hasPrefix: "[String" or variable.typeName.name|hasPrefix: "[Character" %}
+		["testString":
+	{% elif variable.typeName.name|hasPrefix: "[Int" or variable.typeName.name|hasPrefix: "[Float" or variable.typeName.name|hasPrefix: "[Double" %}
+		[0:
+	{% elif variable.typeName.name|hasPrefix: "[Bool" %}
+		[true:
+	{% else %}
+		[{% call initcostum variable.typeName.name %}
+	{% endif %}
+	{% if variable.typeName.name|hasSuffix: "String]" or variable.typeName.name|hasSuffix: "Character]" %} 
+		 "testString"]
+	{% elif variable.typeName.name|hasSuffix: "Int]" or variable.typeName.name|hasSuffix: "Float]" or variable.typeName.name|hasSuffix: "Double]" %}
+		 0]
+	{% elif variable.typeName.name|hasSuffix: "Bool]" %}
+		 true]
+	{% else %}
+		 {% call initcostum variable.typeName.name %}]
+	{% endif %}
+{% elif variable.typeName.name|contains: "(" %}
+	{% call inittuple variable.typeName.name %}
+{% elif variable.typeName.name|!contains: "<" %}
+	{% if variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" %}
+		"testString"
+	{% elif variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" %}
+		0
+	{% elif variable.typeName.name|contains: "Bool" %}
+		true
+	{% else %}
+		{% call initcostum variable.typeName.name %}
+	{% endif %}
+{% else %}
+	{% call initcostum variable.typeName.name %}
+{% endif %}
+{% endmacro %}
+
+
+{# initialiseiert: struct, enum, generic  #}
+
+{% macro initcostum String %}
+	{% for type in types.structs %}
+		{% if String|contains: "<" %}
+			{% for item in String|split: "<" %}
+				{% if forloop.last %}
+					{% if String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" == type.name %}
+						{{String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<",""}}({% call createofType type.variables %})
+					{% elif forloop.last %}
+						{% for type in types.enums %}
+							{% if String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" == type.name %}
+								.{{type.cases.first.name}}
+							{% elif forloop.last %}
+								{% for type in types.enums where String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" != type.name %}
+									{% if forloop.length == types.enums.count and forloop.last %}
+										{% for type in types.structs where String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" != type.name %}
+											{% if forloop.length == types.structs.count and forloop.last %}
+												"testString(generic)"
+											{% endif %}
+										{% endfor %}
+									{% endif %}
+								{% endfor %}
+							{% endif %}
+						{% endfor %}
+					{% endif %}
+				{% endif %}
+			{% endfor %}
+		{% else %}
+			{% if String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" == type.name %}
+				{{String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""}}({% call createofType type.variables %})
+			{% elif forloop.last %}
+				{% for type in types.enums %}
+					{% if String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" == type.name %}
+						.{{type.cases.first.name}}
+					{% elif forloop.last %}
+						{% for type in types.enums where String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" != type.name %}
+							{% if forloop.length == types.enums.count and forloop.last %}
+								{% for type in types.structs where String|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" != type.name %}
+									{% if forloop.length == types.structs.count and forloop.last %}
+										"testString(generic)"
+									{% endif %}
+								{% endfor %}
+							{% endif %}
+						{% endfor %}
+					{% endif %}
+				{% endfor %}
+			{% endif %}
+		{% endif %}
+	{% endfor %}
+{% endmacro %}
+
+
+{# initialiseiert: tuple  #}
+
+{% macro inittuple String %}
+({% for item in String|split: "," %}
+	{% if item|contains: "String" or item|contains: "Character" %}
+		"testString"
+	{% elif item|contains: "Int" or item|contains: "Float" or item|contains: "Double" %}
+		0
+	{% elif item|contains: "Bool" %}
+		true
+	{% else %}
+		{% call initcostum item %}
+	{% endif %}
+	{{ ',' if not forloop.last }}
+{% endfor %})
+{% endmacro %}
+
+
+{# Testerstellung --------------------------------------------------------------------------------------------------------------------------------------------------------- #}
+{# erstellt tupletestteil #}
+
+{% macro createtupleTest item counter %}
+{% if counter == -1 %}
+	{% if item|contains: "String" or item|contains: "Character" %}
+		, "testString")
+	{% elif item|contains: "Int" or item|contains: "Float" or item|contains: "Double" %}
+		, 0)
+	{% elif item|contains: "Bool" %}
+		, true)
+	{% else %}
+		,  {% call initcostum item %})		
+	{% endif %}
+{% else %}	
+	{% if item|contains: "String" or item|contains: "Character" %}
+		.{{counter}}, "testString")
+	{% elif item|contains: "Int" or item|contains: "Float" or item|contains: "Double" %}
+		.{{counter}}, 0)
+	{% elif item|contains: "Bool" %}
+		.{{counter}}, true)
+	{% else %}
+		.{{counter}},  {% call initcostum item %})		
+	{% endif %}
+{% endif %}
+{% endmacro %}
+
+
+{# testet: struct, enum, generic #}
+
+{% macro createCostumTypeTest variable options first %}
+{% for type in types.structs %}
+	{% if variable.typeName.name|contains: "<" %}
+		{% for item in variable.typeName.name|split: "<" %}
+			{% if forloop.last %}
+				{% if variable.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" == type.name %}
+					{% for typevar in type.variables %}
+						{% if typevar.typeName.name|contains: "(" %}
+							{% if first %}
+								{% for item in typevar.typeName.name|split: "," %}
+									{% if forloop.length == 1 %}
+										XCTAssertEqual(model.{{variable.name}}.{{typevar.name}}{% call createtupleTest item -1 %}
+									{% else %}
+										XCTAssertEqual(model.{{variable.name}}.{{typevar.name}}{% call createtupleTest item forloop.counter0 %}
+									{% endif %}
+								{% endfor %}
+							{% else %}
+								{% for item in typevar.typeName.name|split: "," %}
+									{% if forloop.length == 1 %}
+										{{typevar.name}}{% call createtupleTest item -1 %}
+									{% else %}
+										{{typevar.name}}{% call createtupleTest item forloop.counter0 %}
+									{% endif %}
+								{% endfor %}
+							{% endif %}
+						{% else %}
+							{% for type in types.structs %}
+								{% if typevar.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" == type.name %}
+									{% if first %}
+										{% if variable.typeName.name|contains: "[" %}
+											XCTAssertEqual(model.{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?[0]" false %}
+										{% else %}
+											XCTAssertEqual(model.{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?" false %}
+										{% endif %}
+									{% else %}
+										{% if variable.typeName.name|contains: "[" %}
+											{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?[0]" false %}
+										{% else %}
+											{{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?" false %}
+										{% endif %}
+									{% endif %}
+								{% endif %}
+							{% endfor %}	
+							{% for type in types.structs where typevar.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")",""|replace: item,""|replace: "<","" != type.name %}
+								{% if forloop.length == types.structs.count and forloop.last %}
+									{% if first %}
+										XCTAssertEqual(model.{{variable.name}}{{options}}.{{typevar.name}}, {% call createSingle typevar %})
+									{% else %}
+										{{typevar.name}}, {% call createSingle typevar %})
+									{% endif %}
+								{% endif %}
+							{% endfor %}
+						{% endif %}
+					{% endfor %}
+				{% endif %}
+			{% endif %}	
+		{% endfor %}	
+	{% else %}
+		{% if variable.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" == type.name %}
+			{% for typevar in type.variables %}
+				{% if typevar.typeName.name|contains: "(" %}
+					{% if first %}
+						{% for item in typevar.typeName.name|split: "," %}
+							{% if forloop.length == 1 %}
+								XCTAssertEqual(model.{{variable.name}}.{{typevar.name}}{% call createtupleTest item -1 %}
+							{% else %}
+								XCTAssertEqual(model.{{variable.name}}.{{typevar.name}}{% call createtupleTest item forloop.counter0 %}
+							{% endif %}
+						{% endfor %}
+					{% else %}
+						{% for item in typevar.typeName.name|split: "," %}
+							{% if forloop.length == 1 %}
+								{{typevar.name}}{% call createtupleTest item -1 %}
+							{% else %}
+								{{typevar.name}}{% call createtupleTest item forloop.counter0 %}
+							{% endif %}
+						{% endfor %}
+					{% endif %}
+				{% else %}
+					{% for type in types.structs %}
+						{% if typevar.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" == type.name %}
+							{% if first %}
+								{% if variable.typeName.name|contains: "[" %}
+									XCTAssertEqual(model.{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?[0]" false %}
+								{% else %}
+									XCTAssertEqual(model.{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?" false %}
+								{% endif %}
+							{% else %}
+								{% if variable.typeName.name|contains: "[" %}
+									{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?[0]" false %}
+								{% else %}
+									{{{variable.name}}{{options}}.{% call createCostumTypeTest typevar "?" false %}
+								{% endif %}
+							{% endif %}
+						{% endif %}
+					{% endfor %}	
+					{% for type in types.structs where typevar.typeName.name|replace: "?",""|replace: "[",""|replace: "]",""|replace: "(",""|replace: ")","" != type.name %}
+						{% if forloop.length == types.structs.count and forloop.last %}
+							{% if first %}
+								XCTAssertEqual(model.{{variable.name}}{{options}}.{{typevar.name}}, {% call createSingle typevar %})
+							{% else %}
+								{{typevar.name}}, {% call createSingle typevar %})
+							{% endif %}
+						{% endif %}
+					{% endfor %}
+				{% endif %}
+			{% endfor %}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% endmacro %}
+
+
+{# startet testerstellung #}
+
+{% macro createTest variables %}
+{% for variable in variables where variable.readAccess != "private" and variable.readAccess != "fileprivate" and variable.defaultValue == nil and not variable.isComputed%}
+	{% if variable.typeName.name|contains: "?" %}
+		{% if variable.typeName.name|contains: "(" %}
+			{% for item in variable.typeName.name|split: "," %}
+				{% if forloop.length == 1 %}
+					XCTAssertEqual(model.{{variable.name}}?{% call createtupleTest item -1 %}
+				{% else %}
+					XCTAssertEqual(model.{{variable.name}}?{% call createtupleTest item forloop.counter0 %}
+				{% endif %}
+			{% endfor %}
+		{% elif variable.typeName.name|!contains: "<" and variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" or variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" or variable.typeName.name|contains: "Bool" %}
+			XCTAssertEqual(model.{{variable.name}}, {% call createSingle variable %})
+		{% else %}
+			{% if variable.typeName.name|contains: "[" %}
+				{%call createCostumTypeTest variable "?[0]" true %}
+			{% else %}
+				{%call createCostumTypeTest variable "?" true %}
+			{% endif %}
+		{% endif %}
+	{% else %}
+		{% if variable.typeName.name|contains: "(" %}
+			{% for item in variable.typeName.name|split: "," %}
+				{% if forloop.length == 1 %}
+					XCTAssertEqual(model.{{variable.name}}{% call createtupleTest item -1 %}
+				{% else %}
+					XCTAssertEqual(model.{{variable.name}}{% call createtupleTest item forloop.counter0 %}
+				{% endif %}
+			{% endfor %}
+		{% elif variable.typeName.name|!contains: "<" and variable.typeName.name|contains: "String" or variable.typeName.name|contains: "Character" or variable.typeName.name|contains: "Int" or variable.typeName.name|contains: "Float" or variable.typeName.name|contains: "Double" or variable.typeName.name|contains: "Bool" %}
+			XCTAssertEqual(model.{{variable.name}}, {% call createSingle variable %})
+		{% else %}
+			{% if variable.typeName.name|contains: "[" %}
+				{%call createCostumTypeTest variable "[0]" true %}
+			{% else %}
+				{%call createCostumTypeTest variable "" true %}
+			{% endif %}
+		{% endif %}
+	{% endif %}
+{% endfor %}
+{% for variable in type.variables where variable.readAccess != "private" and variable.readAccess != "fileprivate" and variable.defaultValue != nil or variable.isComputed%}
+	{% if variable.defaultValue != nil %}
+		{% if variable.isStatic %}
+			XCTAssertEqual({{type.name}}.{{variable.name}}, {{variable.defaultValue}})
+		{% else %}
+			XCTAssertEqual(model.{{variable.name}}, {{variable.defaultValue}})
+		{% endif %}
+	{% elif variable.isComputed %}
+		XCTAssertNotNil(model.{{variable.name}})
+	{% endif %}
+{% endfor %}				
+{% endmacro %}
+
+
+{# Setup --------------------------------------------------------------------------------------------------------------------------------------------------------- #}
+
+import XCTest
+@testable import af_testaufgabe
+
+class GeneratedTestsStencil: XCTestCase {
+
+	// MARK: - Life cycle
+	
+	override func setUp() {
+		super.setUp()
+	}
+
+	override func tearDown() {
+		super.tearDown()
+	}
+
+
+	// MARK: - Test cases
+	
+	
+{% for type in types.structs where type.accessLevel != "private" and type.accessLevel != "fileprivate" and type.annotations.createTest %}
+
+	{% if type.initializers.count == 0 %}
+	
+		func test{{type.name}}() {
+		
+		let model = {{type.name}}(
+			{% call createModel type.variables %}
+		)
+
+
+		{% call createTest type.variables %}
+		XCTAssertNotNil(model)	
+	}	
+	{% else %}	
+
+		{% for initialzer in type.initializers %}
+	func test{{type.name}}{{forloop.count0}}() {
+			
+		let model = {{type.name}}(
+			{% call createModelInit initialzer.parameters %}
+			
+		)
+
+
+		{% call createTest type.variables %}
+		XCTAssertNotNil(model)	
+		{% endfor %}
+	}
+	{% endif %}
+{% endfor %}
+
+{% for type in types.classes where type.accessLevel != "private" and type.accessLevel != "fileprivate" and type.annotations.createTest %}
+
+	{% if type.initializers.count == 0 %}
+	
+		func test{{type.name}}() {
+		
+		let model = {{type.name}}(
+			{% call createModel type.variables %}
+		)
+
+
+		{% call createTest type.variables %}
+		XCTAssertNotNil(model)	
+	}	
+	{% else %}	
+
+		{% for initialzer in type.initializers %}
+
+	func test{{type.name}}{{forloop.counter0}}() {
+			
+		let model = {{type.name}}(
+			{% call createModelInit initialzer.parameters %}
+		)
+
+
+		{% call createTest type.variables %}
+		XCTAssertNotNil(model)	
+		
+	}
+		{% endfor %}
+	{% endif %}
+{% endfor %}
+}

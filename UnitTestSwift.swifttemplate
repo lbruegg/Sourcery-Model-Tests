@@ -1,0 +1,465 @@
+<%
+
+
+// MARK: - ruft initialisierung von liste von variablen
+
+func createModel(for variables: [Variable]) -> [String] {
+	
+	var result: [String] = []
+
+	for (i, variable) in variables.enumerated() where variable.defaultValue == nil && !variable.isComputed {
+		
+			var item: String = "\(variable.name): "
+
+			item += "\(createSingle(variable.typeName.name))"
+			if i != variables.endIndex-1 {
+				item += ", "
+			}
+
+			result.append(item)
+		}
+		return result
+}
+
+
+// MARK: - ruft initialisierung von liste von parametern 
+
+func createModelInit(for variables: [MethodParameter]) -> [String] {
+	var result: [String] = []
+
+	for (i, variable) in variables.enumerated()  {
+		
+		var item: String = "\(variable.name): "
+
+		item += "\(createSingle(variable.typeName.name))"
+		if i != variables.endIndex-1 {
+			item += ", "
+		}
+
+		result.append(item)
+	}
+	return result
+}
+
+
+// MARK: -  initialisiert: Struct 
+
+func initStruct(of type: Type) -> String {
+	
+	var item = " \(type.name.replacingOccurrences(of: "?[]", with: ""))("
+
+	for (idx, variable) in type.variables.enumerated() {
+					
+		item += "\(variable.name): \(createSingle(variable.typeName.name))"
+
+		if idx == type.variables.endIndex-1  {
+			item += ")"
+		}
+		if idx != type.variables.endIndex-1 && type.variables.endIndex != 1 {
+			item += ", "
+		}
+	}
+	return item
+}
+
+
+// MARK: -  initialisiert test erstellung
+
+func createTest(of type: Type) -> [String] {
+
+	var result: [String] = []
+
+	for variable in type.variables where variable.readAccess != "private" && variable.readAccess != "fileprivate" && variable.defaultValue == nil && !variable.isComputed {
+
+		result.append(contentsOf: createSingleTest(variable))
+	}		
+	
+	for variable in type.variables where variable.readAccess != "private" && variable.readAccess != "fileprivate" && variable.defaultValue != nil || variable.isComputed {
+
+		if let value = variable.defaultValue {
+			value.replacingOccurrences(of: "Optional()", with: "")
+			if variable.isStatic {
+				result.append("XCTAssertEqual(\(type.name).\(variable.name), \(value))")
+			} else {
+				if variable.typeName.name.contains("?") {
+					result.append("XCTAssertEqual(model.\(variable.name)?, \(value))")
+				} else {
+					result.append("XCTAssertEqual(model.\(variable.name), \(value))")
+				}
+			}
+		} else if variable.isComputed {
+			result.append("XCTAssertNotNil(model.\(variable.name))")
+		} 
+	}
+	
+	result.append("XCTAssertNotNil(model)")
+	return result
+}
+
+
+// MARK: - erstellt test von Typ Tuple
+
+func createtupleTest(for tuple: String) -> [String] {
+	
+	var result: [String] = []
+
+	for (idx, item) in tuple.components(separatedBy: ",").enumerated() {
+		
+		if tuple.components(separatedBy: ",").endIndex != 1 {
+			
+			if item.contains("String") || item.contains("Character") {
+				result.append(".\(idx), \"testString\")")
+			} else if item.contains("Int") || item.contains("Float") || item.contains("Double") {
+				result.append(".\(idx), 0)")
+			} else if item.contains("Bool") {
+				result.append(".\(idx), true)")
+			} else {
+				result.append(".\(idx), \(initCostumType(item)))")
+			}
+		} else {
+			
+			if item.contains("String") || item.contains("Character") {
+				result.append(", \"testString\")")
+			} else if item.contains("Int") || item.contains("Float") || item.contains("Double") {
+				result.append(", 0)")
+			} else if item.contains("Bool") {
+				result.append(", true)")
+			} else {
+				result.append(", \(initCostumType(item)))")
+			}
+		}
+	}
+	return result
+}
+
+
+// MARK: - erstellt test für: tuple, struct, enum , array, dictonary 
+
+func createSingleTest(_ variable: Variable) -> [String] {
+	
+	var result: [String] = []
+
+
+	if variable.typeName.name.contains("(") {
+		
+		for item in createtupleTest(for: variable.typeName.name) {
+			if variable.typeName.name.contains("?") {
+				result.append("XCTAssertEqual(model.\(variable.name)?\(item)")
+			} else {
+				result.append("XCTAssertEqual(model.\(variable.name)\(item)")
+			}			
+		}
+
+	} else if !variable.typeName.name.contains("<") && variable.typeName.name.contains("String") || variable.typeName.name.contains("Character") || variable.typeName.name.contains("Int") || variable.typeName.name.contains("Float") || variable.typeName.name.contains("Double") || variable.typeName.name.contains("Bool") || variable.typeName.name.contains("[") || variable.typeName.name.contains(":") || variable.typeName.name.contains("Set") {
+
+		if checkforEnumStruct(variable) {
+			for item in createCostumTypeTest(variable) {
+				if variable.typeName.name.contains("?") {
+					result.append("XCTAssertEqual(model.\(variable.name)?[0]\(item)")	
+
+				} else {
+					result.append("XCTAssertEqual(model.\(variable.name)[0]\(item)")	
+				}
+			}
+		} else {
+
+			result.append("XCTAssertEqual(model.\(variable.name), \(createSingle(variable.typeName.name)))")
+		}
+	} else {
+
+		for item in createCostumTypeTest(variable) {
+			if variable.typeName.name.contains("?") {
+				result.append("XCTAssertEqual(model.\(variable.name)?\(item)")
+			} else {
+				result.append("XCTAssertEqual(model.\(variable.name)\(item)")
+			}
+		}
+	} 
+	return result
+}
+
+
+//  MARK: - test der Variable Enum oder Struct ist
+
+func checkforEnumStruct(_ variable: Variable) -> Bool {
+
+	for type in types.structs {	
+		
+		if variable.typeName.name.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "?", with: "") == type.name {
+			return true
+		}
+	}
+	for enutype in types.enums {
+		if variable.typeName.name.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "?", with: "") == enutype.name {
+			return true
+		}
+	}
+	return false
+}
+
+
+//  MARK: - erstellt struct, enum, generic, computed und vordefinierte Werte, Mehfachvererbung 
+
+func createCostumTypeTest(_ costumVar: Variable) -> [String] {
+	
+	var result: [String] = []
+	for type in types.structs {	
+
+		if costumVar.typeName.name.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "[", with: "") .replacingOccurrences(of: "?", with: "").replacingOccurrences(of: "<[a-zA-Z]+>", with: "", options: .regularExpression) == type.name.replacingOccurrences(of: "<[a-zA-Z]+>", with: "", options: .regularExpression) {
+			for item in type.variables {
+
+				if item.typeName.name.contains("(") {
+		
+					for test in createtupleTest(for: item.typeName.name) {
+						result.append(".\(item.name)\(test)")
+					}
+				} else {
+					if checkforEnumStruct(item) {
+						if item.typeName.name.contains("[") {
+							for test in createCostumTypeTest(item) {
+								if item.typeName.name.contains("?") {
+									result.append(".\(item.name)?[0]\(test)")	
+
+								} else {
+									result.append(".\(item.name)[0]\(test)")	
+								}
+							}
+						} else {
+							for test in createCostumTypeTest(item) {
+								if item.typeName.name.contains("?") {
+									result.append(".\(item.name)?\(test)")	
+
+								} else {
+									result.append(".\(item.name)\(test)")	
+								}
+							}
+						}
+					} else {
+						result.append(".\(item.name), \(createSingle(item.typeName.name)))")
+					}	
+				}
+			}
+			return result
+		}
+	}
+
+	for (n, enutype) in types.enums.enumerated() {
+
+		if costumVar.typeName.name.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "[", with: "") .replacingOccurrences(of: "?", with: "") == enutype.name {
+			return [", .\(enutype.cases[0].name))"]
+
+		} else if n == types.enums.endIndex-1 {
+			return [", \"testString(generic)\")"]
+		}
+	}
+	return result
+}
+
+
+// MARK: - initialisiert: num, generic, ruft init für struct 
+
+func initCostumType(_ costumVar: String) -> String {
+
+	for type in types.structs {	
+
+		if costumVar.replacingOccurrences(of: "]", with: "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "?", with: "").replacingOccurrences(of: "<[a-zA-Z]+>", with: "", options: .regularExpression) == type.name.replacingOccurrences(of: "<[a-zA-Z]+>", with: "", options: .regularExpression) {
+			return initStruct(of: type)
+		}
+	}
+
+	for (n, enutype) in types.enums.enumerated() {
+
+		if costumVar.contains(enutype.name) {
+			return ".\(enutype.cases[0].name)"
+
+		} else if n == types.enums.endIndex-1 {
+			return "\"testString(generic)\""
+		}
+	}
+	return "....."
+}
+
+
+// MARK: - initialisiert: einzelne variablen(String, Int, bool, array), ruft init für struct typ und tuple typ auf
+
+func createSingle(_ variable: String) -> String {
+	
+	if variable.contains("[") && !variable.contains(":") || variable.contains("Set") {
+		
+		if variable.contains("String") || variable.contains("Character") {
+			return "[\"testString\"]"
+		} else if variable.contains("Int") || variable.contains("Float") || variable.contains("Double") {
+			return "[0]"
+		} else if variable.contains("Bool") {
+			return "[true]"
+		} else {
+			return "[\(initCostumType(variable))]"
+		}
+	} else if variable.contains(":") {
+
+		var item: String
+
+		if variable.hasPrefix("[String") || variable.hasPrefix("[Character") {
+			item = "[\"testString\":"
+		} else if variable.hasPrefix("[Int") || variable.hasPrefix("[Float") || variable.hasPrefix("[Double") {
+			item = "[0:"
+		} else if variable.hasPrefix("[Bool") {
+			item = "[true:"
+		} else {
+			item = "[\(initCostumType(variable)):"
+		}
+		if variable.hasSuffix("String]") || variable.hasSuffix("Character]") {
+			item += "\"testString\"]"
+		} else if variable.hasSuffix("Int]") || variable.hasSuffix("Float]") || variable.hasSuffix("Double]") { 
+			item += "0]"
+	 	} else if variable.hasSuffix("Bool]") { 
+			item += "true]"
+		} else {
+			item += "\(initCostumType(variable))]"
+		}
+		return item
+	} else if variable.contains("(") {
+
+		return inittuple(variable)
+	} else if !variable.contains("<") {
+
+		if variable.contains("String") || variable.contains("Character") {
+			return "\"testString\""
+		} else if variable.contains("Int") || variable.contains("Float") || variable.contains("Double") {
+			return "0"
+	 	} else if variable.contains("Bool") {
+			return "true"
+	 	} else {
+			return initCostumType(variable)
+		}
+	} else {
+		return initCostumType(variable)	
+	}
+}
+
+
+// Mark: - initialisiert: tuple
+
+func inittuple(_ vartype: String) -> String {
+
+	var tuple: String = "("
+
+	for (idx, item) in vartype.components(separatedBy: ",").enumerated() {
+
+		if item.contains("String") || item.contains("Character") {
+			tuple += "\"testString\""
+		} else if item.contains("Int") || item.contains("Float") || item.contains("Double") {
+			tuple += "0"
+		} else if item.contains("Bool") {
+			tuple += "true"
+		} else {
+			tuple += initCostumType(item)
+		}
+			
+		if idx != vartype.components(separatedBy: ",").endIndex-1 {
+			tuple += ", "
+		}
+	}	
+	tuple += ")"
+	return tuple
+}
+%>
+
+
+import XCTest
+@testable import af_testaufgabe
+
+class GeneratedTestsSwift: XCTestCase {
+
+	// MARK: - Life cycle
+	
+	override func setUp() {
+		super.setUp()
+	}
+
+	override func tearDown() {
+		super.tearDown()
+	}
+
+
+	// MARK: - Test cases
+	
+	//structs
+<% for type in types.structs where type.accessLevel != "private" && type.accessLevel != "fileprivate" && type.annotations["createTest"] != nil { -%>
+	<%_ if type.initializers.count == 0 { -%>
+	func test<%= type.name %>() {
+
+		let model = <%= type.name %>(
+					<%_ let item = createModel(for: type.variables) -%>
+					<%_ for (n, varitem) in item.enumerated() { -%>
+					<%= varitem %>
+					<%_ } -%>
+		)
+ 
+
+ 		<%_ let tests = createTest(of: type) -%>
+		<%_ for (n, testitem) in tests.enumerated() { -%>
+		<%= testitem %>
+		<%_ } -%>
+	}
+	<%_ } else { -%>
+
+	<%_ for (idx, initializer) in type.initializers.enumerated() { -%>
+	func test<%= type.name %><%= idx %>() {
+		let model = <%= type.name %>(
+					<%_ let item = createModelInit(for: initializer.parameters) -%>
+					<%_ for (n, varitem) in item.enumerated() { -%>
+					<%= varitem %>
+					<%_ } -%>
+		)
+
+
+		<%_ let tests = createTest(of: type) -%>
+		<%_ for (n, testitem) in tests.enumerated() { -%>
+		<%= testitem %>
+		<%_ } -%>
+	}
+	<%_ } -%>
+	<%_ } -%>
+<% } %>
+
+
+	//classes
+<% for type in types.classes where type.accessLevel != "private" && type.accessLevel != "fileprivate" && type.annotations["createTest"] != nil { -%>
+	<%_ if type.initializers.count == 0 { -%>
+	func test<%= type.name %>() {
+
+		let model = <%= type.name %>(
+					<%_ let item = createModel(for: type.variables) -%>
+					<%_ for (n, varitem) in item.enumerated() { -%>
+					<%= varitem %>
+					<%_ } -%>
+		)
+ 
+
+ 		<%_ let tests = createTest(of: type) -%>
+		<%_ for (n, testitem) in tests.enumerated() { -%>
+		<%= testitem %>
+		<%_ } -%>
+	}
+	<%_ } else { -%>
+
+	<%_ for (idx, initializer) in type.initializers.enumerated() { -%>
+	func test<%= type.name %><%= idx %>() {
+		let model = <%= type.name %>(
+					<%_ let item = createModelInit(for: initializer.parameters) -%>
+					<%_ for (n, varitem) in item.enumerated() { -%>
+					<%= varitem %>
+					<%_ } -%>
+		)
+
+
+		<%_ let tests = createTest(of: type) -%>
+		<%_ for (n, testitem) in tests.enumerated() { -%>
+		<%= testitem %>
+		<%_ } -%>
+	}
+	<%_ } -%>
+	<%_ } -%>
+<% } %>
+}
